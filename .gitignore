@@ -1,0 +1,25 @@
+# Dependencies
+**/node_modules/
+
+# Local environment files and secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Generated Prisma clients
+**/generated/prisma/
+
+# Logs and coverage
+**/*.log
+**/coverage/
+
+# Local editor, OS, and agent metadata
+.DS_Store
+Thumbs.db
+**/.agents/
+**/.claude/
+**/.windsurf/
+
+# Temporary files
+**/*.tmp
+**/*.temp

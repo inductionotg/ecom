@@ -1,0 +1,47 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Product {
+  id            String   @id @default(uuid())
+  sku           String   @unique
+  name          String
+  price         Decimal  @db.Decimal(12, 2)
+  stockTotal    Int      @default(0) @map("stock_total")
+  stockReserved Int      @default(0) @map("stock_reserved")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  reservations  InventoryReservation[]
+
+  @@map("products")
+}
+
+model InventoryReservation {
+  id         String   @id @default(uuid())
+  orderId    String   @map("order_id")
+  productId  String   @map("product_id")
+  quantity   Int
+  status     String   @default("RESERVED") // RESERVED, RELEASED, COMMITTED
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  product    Product  @relation(fields: [productId], references: [id])
+
+  @@unique([orderId, productId])
+  @@index([orderId])
+  @@map("inventory_reservations")
+}
+
+model ProcessedEvent {
+  eventId      String   @id @map("event_id")
+  consumerName String   @map("consumer_name") @db.VarChar(64)
+  processedAt  DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_events")
+}

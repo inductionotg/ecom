@@ -1,0 +1,72 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
+model Order {
+  id            String       @id @default(uuid())
+  userId        String       @map("user_id")
+  totalAmount   Decimal      @map("total_amount") @db.Decimal(12, 2)
+  status        OrderStatus  @default(PENDING)
+  failureReason String?      @map("failure_reason")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  items         OrderItem[]
+
+  @@index([userId, status])
+  @@index([createdAt(sort: Desc)])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String   @map("order_id")
+  productId String   @map("product_id")
+  quantity  Int
+  unitPrice Decimal  @map("unit_price") @db.Decimal(12, 2)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model OutboxEvent {
+  id            String       @id @default(uuid())
+  aggregateType String       @map("aggregate_type") @db.VarChar(64)
+  aggregateId   String       @map("aggregate_id")
+  eventType     String       @map("event_type") @db.VarChar(64)
+  payload       Json
+  correlationId String       @map("correlation_id") @db.VarChar(64)
+  status        OutboxStatus @default(PENDING)
+  retryCount    Int          @default(0) @map("retry_count")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  publishedAt   DateTime?    @map("published_at")
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}
+
+model ProcessedEvent {
+  eventId      String   @id @map("event_id")
+  consumerName String   @map("consumer_name") @db.VarChar(64)
+  processedAt  DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_events")
+}
