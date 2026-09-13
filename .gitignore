@@ -19,6 +19,7 @@ Thumbs.db
 **/.agents/
 **/.claude/
 **/.windsurf/
+**/skills-lock.json
 
 # Temporary files
 **/*.tmp

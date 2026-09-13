@@ -298,7 +298,7 @@ The commands below assume you are in the repository root.
 ### 1. Clone and install dependencies
 
 ```bash
-git clone https://github.com/<your-github-username>/ecom.git
+git clone https://github.com/inductionotg/ecom.git
 cd ecom
 
 npm --prefix order-service ci
