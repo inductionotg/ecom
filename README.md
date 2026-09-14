@@ -14,7 +14,7 @@ The project uses:
 
 > This repository is an educational reference implementation. Read [Current limitations](#current-limitations) before treating it as production-ready.
 
-For a code-mapped view of every component, event, state transition, success path, compensation path, cache path, and DLQ path, see **[Architecture and Saga Flows](./docs/ARCHITECTURE.md)**.
+For a code-mapped view of every component, event, state transition, success path, compensation path, cache path, and DLQ path, see **[Architecture and Saga Flows](./docs/ARCHITECTURE.md)**. For the container topology and operating guide, see **[Docker Deployment](./docs/DOCKER.md)**.
 
 ## Table of contents
 
@@ -24,7 +24,8 @@ For a code-mapped view of every component, event, state transition, success path
 - [Patterns demonstrated](#patterns-demonstrated)
 - [Project structure](#project-structure)
 - [Prerequisites](#prerequisites)
-- [Quick start](#quick-start)
+- [Docker deployment with Neon](#docker-deployment-with-neon)
+- [Manual quick start](#manual-quick-start)
 - [API reference](#api-reference)
 - [Testing the Saga](#testing-the-saga)
 - [Observability and failure handling](#observability-and-failure-handling)
@@ -248,9 +249,14 @@ The Order service accepts `x-correlation-id` or generates one. It is stored with
 
 ```text
 ecom/
+|-- .dockerignore
+|-- .env.example
+|-- Dockerfile
+|-- compose.yaml
 |-- README.md
 |-- docs/
-|   +-- ARCHITECTURE.md
+|   |-- ARCHITECTURE.md
+|   +-- DOCKER.md
 |-- order-service/
 |   |-- prisma/
 |   |   |-- migrations/
@@ -288,16 +294,71 @@ ecom/
 
 ## Prerequisites
 
+For the recommended container workflow:
+
+- Docker Desktop or Docker Engine with Docker Compose
+- Three Neon PostgreSQL connection URLs (the services may use separate databases or separate schemas in one database)
+
+For manual development without application containers:
+
 - Node.js `20` or newer; Node.js 22 LTS is recommended
 - npm
-- PostgreSQL
+- PostgreSQL or Neon
 - RabbitMQ
 - Redis
-- Optional: Docker, for starting local infrastructure quickly
 
 The commands below assume you are in the repository root.
 
-## Quick start
+## Docker deployment with Neon
+
+Docker runs RabbitMQ, Redis, and the three Node.js services. PostgreSQL is intentionally **not** containerized: every service connects outbound to Neon using the URL in its own `.env` file. One shared `Dockerfile` builds a distinct runtime and migration image for each service.
+
+1. Create the local environment files:
+
+```powershell
+if (-not (Test-Path -LiteralPath '.env')) { Copy-Item -LiteralPath '.env.example' -Destination '.env' }
+if (-not (Test-Path -LiteralPath 'order-service/.env')) { Copy-Item -LiteralPath 'order-service/.env.example' -Destination 'order-service/.env' }
+if (-not (Test-Path -LiteralPath 'inventory-service/.env')) { Copy-Item -LiteralPath 'inventory-service/.env.example' -Destination 'inventory-service/.env' }
+if (-not (Test-Path -LiteralPath 'payment-service/.env')) { Copy-Item -LiteralPath 'payment-service/.env.example' -Destination 'payment-service/.env' }
+```
+
+These commands preserve any environment files that already exist.
+
+2. In each service `.env`, set `DATABASE_URL` to its Neon runtime URL. Set `MIGRATION_DATABASE_URL` to the direct/unpooled Neon URL when the runtime URL uses pooling. Keep these schema query parameters:
+
+| Service | Required schema parameter |
+| --- | --- |
+| Order | `schema=public` |
+| Inventory | `schema=inventory_schema` |
+| Payment | `schema=payment_schema` |
+
+3. Build and start the stack:
+
+```bash
+docker compose up --build -d
+docker compose ps -a
+docker compose logs -f order-service inventory-service payment-service
+```
+
+Compose applies the three Prisma migrations sequentially, waits for RabbitMQ and Redis, then starts Payment, Inventory, and Order in dependency order. If a migration fails, the dependent application does not start and the failure remains visible in `docker compose ps -a` and `docker compose logs`.
+
+4. Seed the two demo products once if the Neon inventory schema is empty:
+
+```bash
+docker compose --profile seed run --rm inventory-seed
+```
+
+5. Verify the APIs:
+
+```bash
+curl http://localhost:3001/health
+curl http://localhost:3002/health
+curl http://localhost:3003/health
+```
+
+See **[Docker Deployment](./docs/DOCKER.md)** for diagrams, image stages, startup flow, logs, rebuilds, shutdown, security notes, and troubleshooting.
+
+## Manual quick start
 
 ### 1. Clone and install dependencies
 
@@ -328,17 +389,17 @@ RabbitMQ's management UI will be available at <http://localhost:15672> with the 
 Copy each checked-in example:
 
 ```powershell
-Copy-Item order-service/.env.example order-service/.env
-Copy-Item inventory-service/.env.example inventory-service/.env
-Copy-Item payment-service/.env.example payment-service/.env
+if (-not (Test-Path -LiteralPath 'order-service/.env')) { Copy-Item -LiteralPath 'order-service/.env.example' -Destination 'order-service/.env' }
+if (-not (Test-Path -LiteralPath 'inventory-service/.env')) { Copy-Item -LiteralPath 'inventory-service/.env.example' -Destination 'inventory-service/.env' }
+if (-not (Test-Path -LiteralPath 'payment-service/.env')) { Copy-Item -LiteralPath 'payment-service/.env.example' -Destination 'payment-service/.env' }
 ```
 
 On macOS or Linux:
 
 ```bash
-cp order-service/.env.example order-service/.env
-cp inventory-service/.env.example inventory-service/.env
-cp payment-service/.env.example payment-service/.env
+[ -f order-service/.env ] || cp order-service/.env.example order-service/.env
+[ -f inventory-service/.env ] || cp inventory-service/.env.example inventory-service/.env
+[ -f payment-service/.env ] || cp payment-service/.env.example payment-service/.env
 ```
 
 The examples target the local Docker containers above. Update the URLs if you use managed infrastructure. Never commit real `.env` files.
@@ -588,7 +649,7 @@ Verify all three services were running before the order was created. RabbitMQ to
 
 ### Port already in use
 
-Change the service's `PORT` environment variable, then use the new port in API requests.
+With Docker Compose, change `ORDER_PORT`, `INVENTORY_PORT`, or `PAYMENT_PORT` in the root `.env`; these are the published host ports. For manual execution, change the affected service's `PORT`. Then use the new host port in API requests.
 
 ## Current limitations
 

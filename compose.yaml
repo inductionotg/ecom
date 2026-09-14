@@ -1,0 +1,243 @@
+name: ${COMPOSE_PROJECT_NAME:-orderflow}
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app-healthcheck: &app-healthcheck
+  test:
+    - CMD
+    - node
+    - -e
+    - >-
+      fetch('http://127.0.0.1:' + process.env.PORT + '/health')
+      .then((response) => { if (!response.ok) process.exit(1); })
+      .catch(() => process.exit(1))
+  interval: 10s
+  timeout: 5s
+  retries: 10
+  start_period: 10s
+
+services:
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-orderflow}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-orderflow-dev}
+    ports:
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - orderflow
+    logging: *default-logging
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    networks:
+      - orderflow
+    logging: *default-logging
+
+  order-migrate:
+    image: orderflow/order-service-migrate:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+      args:
+        SERVICE_NAME: order-service
+    env_file:
+      - ./order-service/.env
+    environment:
+      NODE_ENV: production
+    restart: "no"
+    networks:
+      - orderflow
+    logging: *default-logging
+
+  inventory-migrate:
+    image: orderflow/inventory-service-migrate:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+      args:
+        SERVICE_NAME: inventory-service
+    env_file:
+      - ./inventory-service/.env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      order-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - orderflow
+    logging: *default-logging
+
+  payment-migrate:
+    image: orderflow/payment-service-migrate:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+      args:
+        SERVICE_NAME: payment-service
+    env_file:
+      - ./payment-service/.env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      inventory-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - orderflow
+    logging: *default-logging
+
+  payment-service:
+    image: orderflow/payment-service:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        SERVICE_NAME: payment-service
+    env_file:
+      - ./payment-service/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-orderflow}:${RABBITMQ_PASSWORD:-orderflow-dev}@rabbitmq:5672
+      EXCHANGE_NAME: orderflow.events
+      PAYMENT_QUEUE_NAME: payment_service_queue
+    ports:
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${PAYMENT_PORT:-3003}:3003"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      payment-migrate:
+        condition: service_completed_successfully
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+    stop_grace_period: 15s
+    networks:
+      - orderflow
+    logging: *default-logging
+
+  inventory-service:
+    image: orderflow/inventory-service:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        SERVICE_NAME: inventory-service
+    env_file:
+      - ./inventory-service/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-orderflow}:${RABBITMQ_PASSWORD:-orderflow-dev}@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+      EXCHANGE_NAME: orderflow.events
+      INVENTORY_QUEUE_NAME: inventory_service_queue
+    ports:
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${INVENTORY_PORT:-3002}:3002"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      inventory-migrate:
+        condition: service_completed_successfully
+      payment-service:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+    stop_grace_period: 15s
+    networks:
+      - orderflow
+    logging: *default-logging
+
+  order-service:
+    image: orderflow/order-service:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        SERVICE_NAME: order-service
+    env_file:
+      - ./order-service/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-orderflow}:${RABBITMQ_PASSWORD:-orderflow-dev}@rabbitmq:5672
+      EXCHANGE_NAME: orderflow.events
+      ORDER_QUEUE_NAME: order_service_queue
+    ports:
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${ORDER_PORT:-3001}:3001"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      order-migrate:
+        condition: service_completed_successfully
+      payment-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+    healthcheck: *app-healthcheck
+    restart: unless-stopped
+    stop_grace_period: 15s
+    networks:
+      - orderflow
+    logging: *default-logging
+
+  inventory-seed:
+    image: orderflow/inventory-service-migrate:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+      args:
+        SERVICE_NAME: inventory-service
+    profiles:
+      - seed
+    env_file:
+      - ./inventory-service/.env
+    environment:
+      NODE_ENV: production
+    command: ["node", "prisma/seed.js"]
+    depends_on:
+      inventory-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - orderflow
+    logging: *default-logging
+
+networks:
+  orderflow:
+    driver: bridge
+
+volumes:
+  rabbitmq-data:

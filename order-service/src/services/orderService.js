@@ -64,14 +64,13 @@ export class OrderService {
   }
 
   // Advanced Reporting: Summary metrics
-    // Advanced Reporting: Summary metrics
   async getOrderMetrics() {
     const metrics = await prisma.$queryRaw`
       SELECT 
         status, 
         COUNT(*)::INT as order_count, 
         COALESCE(SUM(total_amount), 0)::NUMERIC as total_revenue
-      FROM orders
+      FROM "public"."orders"
       GROUP BY status;
     `;
 
