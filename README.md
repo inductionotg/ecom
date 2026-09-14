@@ -14,6 +14,8 @@ The project uses:
 
 > This repository is an educational reference implementation. Read [Current limitations](#current-limitations) before treating it as production-ready.
 
+For a code-mapped view of every component, event, state transition, success path, compensation path, cache path, and DLQ path, see **[Architecture and Saga Flows](./docs/ARCHITECTURE.md)**.
+
 ## Table of contents
 
 - [System architecture](#system-architecture)
@@ -247,6 +249,8 @@ The Order service accepts `x-correlation-id` or generates one. It is stored with
 ```text
 ecom/
 |-- README.md
+|-- docs/
+|   +-- ARCHITECTURE.md
 |-- order-service/
 |   |-- prisma/
 |   |   |-- migrations/
