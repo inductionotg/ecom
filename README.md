@@ -20,7 +20,7 @@ For a code-mapped view of every component, event, state transition, success path
 
 Watch the OrderFlow frontend in action.
 
-[▶ Watch the UI demo](./docs/media/ui-demo.mp4)
+https://github.com/user-attachments/assets/5ffa7209-e19b-463c-a6d8-e516833e49d0
 
 ## Table of contents
 
