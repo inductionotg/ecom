@@ -16,8 +16,15 @@ The project uses:
 
 For a code-mapped view of every component, event, state transition, success path, compensation path, cache path, and DLQ path, see **[Architecture and Saga Flows](./docs/ARCHITECTURE.md)**. For the container topology and operating guide, see **[Docker Deployment](./docs/DOCKER.md)**.
 
+## UI demo
+
+Watch the OrderFlow frontend in action.
+
+[▶ Watch the UI demo](./docs/media/ui-demo.mp4)
+
 ## Table of contents
 
+- [UI demo](#ui-demo)
 - [System architecture](#system-architecture)
 - [Service responsibilities](#service-responsibilities)
 - [Checkout flow](#checkout-flow)
